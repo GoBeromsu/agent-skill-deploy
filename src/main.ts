@@ -83,7 +83,7 @@ export default class SkillDeployPlugin extends Plugin {
 			this.app, this, this.auth, this.logger, this.notices,
 		));
 
-		this.logger.info('Skill Deploy plugin loaded');
+		this.logger.info('Agent Skill Deploy plugin loaded');
 	}
 
 	onunload(): void {

@@ -52,8 +52,8 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 				.setButtonText('Open GitHub app setup')
 				.onClick(() => {
 					const params = new URLSearchParams({
-						name: `skill-deploy-${Date.now()}`,
-						url: 'https://github.com/GoBeromsu/obsidian-skill-deploy',
+						name: `agent-skill-deploy-${Date.now()}`,
+						url: 'https://github.com/GoBeromsu/agent-skill-deploy',
 						callback_url: 'http://localhost:27549/auth/callback',
 						public: 'false',
 						webhooks: 'false',

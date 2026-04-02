@@ -1,5 +1,5 @@
 {
-	"name": "obsidian-skill-deploy",
+	"name": "agent-skill-deploy",
 	"version": "0.1.0",
 	"description": "Deploy AI agent skills from your vault to remote GitHub repositories",
 	"main": "main.js",
@@ -15,8 +15,6 @@
 		"ci": "pnpm run build && pnpm run lint && pnpm run test",
 		"prepare": "husky",
 		"version": "node scripts/version.mjs",
-		"sync:plugins": "node scripts/sync-to-plugins.mjs",
-		"sync:check": "node scripts/sync-to-plugins.mjs --check",
 		"postversion": "git push && git push --tags",
 		"release:patch": "node scripts/release.mjs patch",
 		"release:minor": "node scripts/release.mjs minor",

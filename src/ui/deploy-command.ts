@@ -136,7 +136,7 @@ export class DeployCommand {
 			// Atomic commit
 			const commitResult = await this.githubApi.createAtomicCommit(
 				owner, repo, provider.branch, files,
-				`deploy: ${skill.name} via skill-deploy`,
+				`deploy: ${skill.name} via agent-skill-deploy`,
 				token,
 			);
 

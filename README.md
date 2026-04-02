@@ -1,4 +1,4 @@
-# Skill Deploy
+# Agent Skill Deploy
 
 Deploy AI agent skills from your Obsidian vault to remote GitHub repositories, with automatic per-provider frontmatter transformation.
 
@@ -16,13 +16,13 @@ Write skills once in your vault using a canonical format, then deploy them to Cl
 
 ### From Obsidian Community Plugins (coming soon)
 
-Search **Skill Deploy** in Settings → Community Plugins.
+Search **Agent Skill Deploy** in Settings → Community Plugins.
 
 ### Manual
 
 ```bash
-git clone https://github.com/GoBeromsu/obsidian-skill-deploy.git
-cd obsidian-skill-deploy
+git clone https://github.com/GoBeromsu/agent-skill-deploy.git
+cd agent-skill-deploy
 pnpm install
 pnpm run build
 ```
@@ -31,14 +31,14 @@ Copy `main.js`, `manifest.json`, and `styles.css` to your vault's `.obsidian/plu
 
 ## Setup
 
-1. Open Settings → Skill Deploy
+1. Open Settings → Agent Skill Deploy
 2. Set **Skills root path** — the vault folder containing your skill files (e.g. `Skills/`)
 3. **Login with GitHub** — click the button to authenticate via OAuth
 4. Configure providers — enable/disable, set target repo URL, deploy path, and branch for each
 
 ## Usage
 
-Run the command palette → **Skill Deploy: Deploy skill**
+Run the command palette → **Agent Skill Deploy: Deploy skill**
 
 1. Pick a skill from the fuzzy-search modal
 2. The plugin reads the skill's canonical frontmatter and body

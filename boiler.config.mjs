@@ -21,7 +21,7 @@ export default {
     testResultsFile: 'test-results.xml',
   },
   release: {
-    pluginName: 'skill-deploy',
+    pluginName: 'agent-skill-deploy',
     copyFiles: ['main.js', 'manifest.json', 'styles.css'],
     publishFiles: [
       '${{ env.PLUGIN_NAME }}.zip',
