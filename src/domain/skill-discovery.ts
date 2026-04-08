@@ -1,33 +1,72 @@
-import type { SkillManifest, SkillFile } from '../types/skill';
-import { parseFrontmatter } from './frontmatter-parser';
+import type { DeployableFolderCandidate, DiscoveryResult, VaultFolderListing } from '../types/skill';
 
-export interface VaultFileListing {
-	readonly folderPath: string;
-	readonly folderName: string;
-	readonly files: SkillFile[];
-}
+export function discoverDeployableFolders(folders: readonly VaultFolderListing[]): DiscoveryResult {
+	const selected: DeployableFolderCandidate[] = [];
+	const warnings: string[] = [];
+	const sortedFolders = folders
+		.slice()
+		.sort((left, right) => depthOf(left.folderPath) - depthOf(right.folderPath));
 
-export function discoverSkills(folders: VaultFileListing[]): SkillManifest[] {
-	const skills: SkillManifest[] = [];
-
-	for (const folder of folders) {
-		const skillMd = folder.files.find(f => f.relativePath === 'SKILL.md');
-		if (!skillMd) continue;
-
-		try {
-			const { frontmatter, body } = parseFrontmatter(skillMd.content);
-			skills.push({
-				id: folder.folderName,
-				name: frontmatter.name,
-				path: folder.folderPath,
-				frontmatter,
-				bodyContent: body,
-				files: folder.files,
-			});
-		} catch {
-			// Skip folders with invalid SKILL.md
+	for (const folder of sortedFolders) {
+		if (selected.some(candidate => isNestedFolder(candidate.folderPath, folder.folderPath))) {
+			continue;
 		}
+
+		const rootNoteName = `${folder.folderName}.md`;
+		const rootNote = folder.files.find(file => file.name === rootNoteName);
+		const rootPluginId = getPluginId(rootNote?.frontmatter);
+
+		if (rootPluginId) {
+			selected.push({
+				folderName: folder.folderName,
+				folderPath: folder.folderPath,
+				identityMode: 'root-note',
+				pluginId: rootPluginId,
+				rootNotePath: rootNote?.path ?? null,
+			});
+			continue;
+		}
+
+		const misplacedPluginNotes = folder.files
+			.filter(file => file.name !== rootNoteName)
+			.filter(file => getPluginId(file.frontmatter) !== null);
+
+		if (misplacedPluginNotes.length > 0) {
+			warnings.push(
+				`${folder.folderPath}: deployable note must be named ${rootNoteName}; ignored ${misplacedPluginNotes
+					.map(file => file.name)
+					.join(', ')}`,
+			);
+		}
+
+		const legacySkill = folder.files.find(file => file.name === 'SKILL.md');
+		if (!legacySkill) continue;
+
+		selected.push({
+			folderName: folder.folderName,
+			folderPath: folder.folderPath,
+			identityMode: 'legacy-skill-md',
+			pluginId: folder.folderName,
+			rootNotePath: null,
+		});
 	}
 
-	return skills;
+	return { folders: selected, warnings };
+}
+
+function getPluginId(frontmatter?: Record<string, unknown>): string | null {
+	const pluginId = frontmatter?.['plugin_id'];
+	if (typeof pluginId !== 'string') return null;
+
+	const normalized = pluginId.trim();
+	return normalized === '' ? null : normalized;
+}
+
+function isNestedFolder(parentPath: string, childPath: string): boolean {
+	const normalizedParent = `${parentPath.replace(/\/+$/g, '')}/`;
+	return childPath !== parentPath && childPath.startsWith(normalizedParent);
+}
+
+function depthOf(path: string): number {
+	return path.split('/').filter(Boolean).length;
 }

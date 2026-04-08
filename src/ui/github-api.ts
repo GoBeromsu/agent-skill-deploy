@@ -1,9 +1,12 @@
 import { requestUrl } from 'obsidian';
 import type { PluginLogger } from '../shared/plugin-logger';
+import { createSnapshotHash } from '../domain/blob-sha';
+import type { MirrorCommitFile, RemoteBlobEntry, RemoteManagedTree } from '../types/skill';
+import { normalizeRepoPath } from '../domain/mirror-plan';
 
 export interface AtomicCommitResult {
 	commitSha: string;
-	treeSha: string;
+	rootTreeSha: string;
 }
 
 export class DeployConflictError extends Error {
@@ -38,64 +41,84 @@ export class GitHubApiClient {
 		return { sha: commitSha, treeSha: commitData.tree.sha };
 	}
 
-	async getTreeShaForPath(owner: string, repo: string, path: string, branch: string, token: string): Promise<string | null> {
-		try {
-			const resp = await this.request('GET', `/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, token);
-			this.logRateLimit(resp.headers);
-			// For directories, GitHub returns an array. We need the tree SHA from git trees API.
-			const ref = await this.getRef(owner, repo, branch, token);
-			const treeResp = await this.request('GET', `/repos/${owner}/${repo}/git/trees/${ref.treeSha}?recursive=1`, token);
-			this.logRateLimit(treeResp.headers);
-			const treeData = JSON.parse(treeResp.text) as { tree: Array<{ path: string; sha: string; type: string }> };
-			const entry = treeData.tree.find(e => e.path === path && e.type === 'tree');
-			return entry?.sha ?? null;
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes('404')) return null; // Path doesn't exist yet
-			throw err; // Re-throw auth, network, rate-limit errors
-		}
+	async getManagedTree(
+		owner: string,
+		repo: string,
+		branch: string,
+		managedPaths: readonly string[],
+		token: string,
+	): Promise<RemoteManagedTree> {
+		const ref = await this.getRef(owner, repo, branch, token);
+		const tree = await this.getTree(owner, repo, ref.treeSha, token, true);
+		const normalizedManagedPaths = [...new Set(
+			managedPaths
+				.map(path => normalizeRepoPath(path))
+				.filter(path => path !== ''),
+		)];
+		const files: RemoteBlobEntry[] = tree
+			.filter(entry => entry.type === 'blob')
+			.filter(entry => normalizedManagedPaths.some(path => matchesManagedPath(entry.path, path)))
+			.map(entry => ({
+				path: entry.path,
+				sha: entry.sha,
+			}))
+			.sort((left, right) => left.path.localeCompare(right.path));
+
+		return {
+			rootTreeSha: ref.treeSha,
+			managedTreeSha: createSnapshotHash(files.map(file => ({
+				relativePath: file.path,
+				blobSha: file.sha,
+			}))),
+			files,
+		};
 	}
 
 	async createAtomicCommit(
 		owner: string,
 		repo: string,
 		branch: string,
-		files: Array<{ path: string; content: string }>,
+		filesToUpsert: readonly MirrorCommitFile[],
+		filesToDelete: readonly string[],
 		message: string,
 		token: string,
 	): Promise<AtomicCommitResult> {
-		// Step 0: Read current ref
 		const ref = await this.getRef(owner, repo, branch, token);
 		const parentCommitSha = ref.sha;
 		const baseTreeSha = ref.treeSha;
 
-		// Step 1: Create blobs for each file
 		const blobShas: Array<{ path: string; sha: string }> = [];
-		for (const file of files) {
+		for (const file of filesToUpsert) {
 			const blobResp = await this.request('POST', `/repos/${owner}/${repo}/git/blobs`, token, {
 				content: file.content,
-				encoding: 'utf-8',
+				encoding: file.encoding,
 			});
 			this.logRateLimit(blobResp.headers);
 			const blobData = JSON.parse(blobResp.text) as { sha: string };
 			blobShas.push({ path: file.path, sha: blobData.sha });
 		}
 
-		// Step 2: Create tree with base_tree
 		const treeResp = await this.request('POST', `/repos/${owner}/${repo}/git/trees`, token, {
 			base_tree: baseTreeSha,
-			tree: blobShas.map(b => ({
-				path: b.path,
-				mode: '100644',
-				type: 'blob',
-				sha: b.sha,
-			})),
+			tree: [
+				...blobShas.map(blob => ({
+					path: blob.path,
+					mode: '100644',
+					type: 'blob',
+					sha: blob.sha,
+				})),
+				...filesToDelete.map(path => ({
+					path,
+					mode: '100644',
+					type: 'blob',
+					sha: null,
+				})),
+			],
 		});
 		this.logRateLimit(treeResp.headers);
 		const treeData = JSON.parse(treeResp.text) as { sha: string };
 		const newTreeSha = treeData.sha;
 
-		// Step 3: Create commit
 		const commitResp = await this.request('POST', `/repos/${owner}/${repo}/git/commits`, token, {
 			message,
 			tree: newTreeSha,
@@ -105,7 +128,6 @@ export class GitHubApiClient {
 		const commitData = JSON.parse(commitResp.text) as { sha: string };
 		const newCommitSha = commitData.sha;
 
-		// Step 4: Update ref (fast-forward)
 		try {
 			const refResp = await this.request('PATCH', `/repos/${owner}/${repo}/git/refs/heads/${branch}`, token, {
 				sha: newCommitSha,
@@ -122,7 +144,23 @@ export class GitHubApiClient {
 			throw err;
 		}
 
-		return { commitSha: newCommitSha, treeSha: newTreeSha };
+		return { commitSha: newCommitSha, rootTreeSha: newTreeSha };
+	}
+
+	private async getTree(
+		owner: string,
+		repo: string,
+		treeSha: string,
+		token: string,
+		recursive: boolean,
+	): Promise<Array<{ path: string; sha: string; type: 'blob' | 'tree' | 'commit' }>> {
+		const suffix = recursive ? '?recursive=1' : '';
+		const resp = await this.request('GET', `/repos/${owner}/${repo}/git/trees/${treeSha}${suffix}`, token);
+		this.logRateLimit(resp.headers);
+		const data = JSON.parse(resp.text) as {
+			tree: Array<{ path: string; sha: string; type: 'blob' | 'tree' | 'commit' }>;
+		};
+		return data.tree;
 	}
 
 	private async request(
@@ -156,4 +194,8 @@ export class GitHubApiClient {
 			this.logger.info('GitHub API rate limit', { remaining });
 		}
 	}
+}
+
+function matchesManagedPath(targetPath: string, managedPath: string): boolean {
+	return targetPath === managedPath || targetPath.startsWith(`${managedPath}/`);
 }

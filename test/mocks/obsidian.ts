@@ -34,6 +34,7 @@ export class Setting {
 	setName(_name: string) { return this; }
 	setDesc(_desc: string) { return this; }
 	addText(_cb: any) { return this; }
+	addDropdown(_cb: any) { return this; }
 	addToggle(_cb: any) { return this; }
 	addButton(_cb: any) { return this; }
 }

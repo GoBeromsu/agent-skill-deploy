@@ -1,7 +1,7 @@
-import type { StoredTokens } from './settings';
+import type { StoredAccessToken } from './settings';
 
 export interface TokenStore {
-	save(tokens: StoredTokens): Promise<void>;
-	load(): Promise<StoredTokens | null>;
+	save(tokens: StoredAccessToken): Promise<void>;
+	load(): Promise<StoredAccessToken | null>;
 	clear(): Promise<void>;
 }

@@ -1,45 +1,50 @@
 import { Plugin } from 'obsidian';
 import type { SkillDeploySettings } from './types/settings';
-import type { ProviderConfig } from './types/provider';
 import { PluginLogger } from './shared/plugin-logger';
 import { PluginNotices, type NoticeCatalog } from './shared/plugin-notices';
-import { TransformerRegistry } from './domain/transformer-registry';
-import { ClaudeTransformer } from './domain/claude-transformer';
-import { CodexTransformer } from './domain/codex-transformer';
-import { GeminiTransformer } from './domain/gemini-transformer';
-import { CursorTransformer } from './domain/cursor-transformer';
 import { GitHubApiClient } from './ui/github-api';
 import { GitHubAuth } from './ui/github-auth';
 import { FileSystemTokenStore } from './ui/token-store';
 import { VaultAdapter } from './ui/vault-adapter';
 import { DeployCommand } from './ui/deploy-command';
-import { SkillDeploySettingTab, DEFAULT_PROVIDERS } from './ui/settings-tab';
+import { SkillDeploySettingTab } from './ui/settings-tab';
 
 const NOTICE_CATALOG: NoticeCatalog = {
-	auth_required: { template: 'Please login with GitHub first.', timeout: 5000, immutable: true },
-	auth_success: { template: 'GitHub authentication successful!', timeout: 3000 },
-	no_skills_found: { template: 'No skills found in the configured skills root path.', timeout: 5000 },
-	no_providers_enabled: { template: 'No providers enabled. Enable at least one in settings.', timeout: 5000 },
-	deploy_success: { template: '{{skill}} deployed to {{count}}/{{total}} providers', timeout: 5000 },
-	deploy_partial: { template: '{{skill}} deployed to {{count}}/{{total}} providers. Failed: {{failed}}', timeout: 8000 },
-	deploy_failed: { template: 'Deploy failed for {{skill}}: {{errors}}', timeout: 10000 },
+	auth_required: { template: 'Configure a GitHub PAT first.', timeout: 5000, immutable: true },
+	auth_success: { template: 'Stored GitHub PAT for {{username}}.', timeout: 3000 },
+	no_folders_found: { template: 'No deployable folders found under {{path}}.', timeout: 5000 },
+	config_valid: { template: 'Configuration valid. Found {{total}} deployable folders ({{warnings}} warnings).', timeout: 5000 },
+	config_invalid: { template: 'Configuration invalid: {{errors}}', timeout: 10000 },
+	deploy_no_changes: { template: 'No changes to deploy. {{unchanged}}/{{total}} folders are already mirrored.', timeout: 5000 },
+	deploy_success: { template: 'Mirror complete. added={{added}} updated={{updated}} deleted={{deleted}} commit={{commit}}', timeout: 7000 },
+	deploy_conflict: { template: 'Remote managed tree changed since last deploy. Review folders: {{folders}}', timeout: 10000 },
+	deploy_failed: { template: 'Deploy failed: {{errors}}', timeout: 10000 },
 };
 
 const DEFAULT_SETTINGS: SkillDeploySettings = {
-	skillsRootPath: '',
-	providers: [...DEFAULT_PROVIDERS],
-	githubAppClientId: '',
-	deployStates: {},
+	sourceRootPath: '55. Tools/Skills',
+	repoOwner: 'GoBeromsu',
+	repoName: 'claude-code-plugins',
+	branch: 'main',
+	targetProvider: 'claude-marketplace',
+	managedSkillsPath: 'skills',
+	codexPluginPath: 'plugins/ataraxia-skills',
+	codexPluginName: 'ataraxia-skills',
+	deployState: null,
 };
 
 export default class SkillDeployPlugin extends Plugin {
 	settings!: SkillDeploySettings;
+	private settingsMigrated = false;
 	private logger!: PluginLogger;
 	private notices!: PluginNotices;
 	private auth!: GitHubAuth;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		if (this.settingsMigrated) {
+			await this.saveSettings();
+		}
 
 		this.logger = new PluginLogger('SkillDeploy');
 		this.notices = new PluginNotices(
@@ -48,23 +53,16 @@ export default class SkillDeployPlugin extends Plugin {
 			'SkillDeploy',
 		);
 
-		const tokenStore = new FileSystemTokenStore(this.logger);
-		this.auth = new GitHubAuth(tokenStore, this.logger);
 		const githubApi = new GitHubApiClient(this.logger);
+		const tokenStore = new FileSystemTokenStore(this.logger);
+		this.auth = new GitHubAuth(tokenStore, githubApi, this.logger);
 		const vaultAdapter = new VaultAdapter(this.app);
-
-		const registry = new TransformerRegistry();
-		registry.register(new ClaudeTransformer());
-		registry.register(new CodexTransformer());
-		registry.register(new GeminiTransformer());
-		registry.register(new CursorTransformer());
 
 		const deployCommand = new DeployCommand(
 			this.app,
 			this.settings,
 			this.logger,
 			this.notices,
-			registry,
 			githubApi,
 			this.auth,
 			vaultAdapter,
@@ -72,10 +70,17 @@ export default class SkillDeployPlugin extends Plugin {
 		);
 
 		this.addCommand({
-			id: 'deploy-skill',
-			name: 'Deploy skill',
+			id: 'deploy-changed-folders',
+			name: 'Deploy changed folders',
 			callback: () => {
 				void deployCommand.execute();
+			},
+		});
+		this.addCommand({
+			id: 'validate-deploy-config',
+			name: 'Validate deploy config',
+			callback: () => {
+				void deployCommand.validateConfiguration();
 			},
 		});
 
@@ -87,23 +92,108 @@ export default class SkillDeployPlugin extends Plugin {
 	}
 
 	onunload(): void {
-		this.auth?.stopServer();
 		this.notices?.unload();
 	}
 
 	async loadSettings(): Promise<void> {
-		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- loadData() returns unknown-shaped JSON
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		// Ensure providers array is populated
-		if (!this.settings.providers || this.settings.providers.length === 0) {
-			this.settings.providers = [...DEFAULT_PROVIDERS] as ProviderConfig[];
-		}
-		if (!this.settings.deployStates) {
-			this.settings.deployStates = {};
-		}
+		const loaded = await this.loadData() as Record<string, unknown> | null;
+		const migrated = this.migrateSettings(loaded ?? {});
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, migrated);
+		this.settingsMigrated = shouldPersistMigratedSettings(loaded ?? {});
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
 	}
+
+	private migrateSettings(loaded: Record<string, unknown>): SkillDeploySettings {
+		const settings: SkillDeploySettings = {
+			...DEFAULT_SETTINGS,
+		};
+
+		const sourceRootPath = readString(loaded['sourceRootPath']) ?? readString(loaded['skillsRootPath']);
+		if (sourceRootPath) settings.sourceRootPath = sourceRootPath;
+
+		const repoOwner = readString(loaded['repoOwner']);
+		const repoName = readString(loaded['repoName']);
+		if (repoOwner) settings.repoOwner = repoOwner;
+		if (repoName) settings.repoName = repoName;
+
+		const branch = readString(loaded['branch']);
+		if (branch) settings.branch = branch;
+
+		const targetProvider = readString(loaded['targetProvider']);
+		if (targetProvider === 'claude-marketplace' || targetProvider === 'codex-plugin') {
+			settings.targetProvider = targetProvider;
+		}
+
+		const managedSkillsPath = readString(loaded['managedSkillsPath']);
+		if (managedSkillsPath) settings.managedSkillsPath = managedSkillsPath;
+
+		const codexPluginPath = readString(loaded['codexPluginPath']);
+		if (codexPluginPath) settings.codexPluginPath = codexPluginPath;
+
+		const codexPluginName = readString(loaded['codexPluginName']);
+		if (codexPluginName) settings.codexPluginName = codexPluginName;
+
+		const deployState = loaded['deployState'];
+		if (deployState && typeof deployState === 'object') {
+			const record = deployState as Record<string, unknown>;
+			settings.deployState = {
+				lastRemoteTreeSha: readNullableString(record['lastRemoteTreeSha']),
+				lastDeployedAt: readString(record['lastDeployedAt']) ?? '',
+				commitSha: readString(record['commitSha']) ?? '',
+			};
+		}
+
+		if ((!settings.repoOwner || !settings.repoName) && Array.isArray(loaded['providers'])) {
+			for (const provider of loaded['providers']) {
+				if (!provider || typeof provider !== 'object') continue;
+				const repoUrl = readString((provider as Record<string, unknown>)['repoUrl']);
+				if (!repoUrl) continue;
+				const parsed = parseOwnerRepo(repoUrl);
+				if (!parsed) continue;
+				settings.repoOwner = settings.repoOwner || parsed.owner;
+				settings.repoName = settings.repoName || parsed.repo;
+				settings.branch = readString((provider as Record<string, unknown>)['branch']) ?? settings.branch;
+				settings.managedSkillsPath = readString((provider as Record<string, unknown>)['deployPath']) ?? settings.managedSkillsPath;
+				break;
+			}
+		}
+
+		return settings;
+	}
+}
+
+function readString(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const normalized = value.trim();
+	return normalized === '' ? null : normalized;
+}
+
+function readNullableString(value: unknown): string | null {
+	if (value === null) return null;
+	return readString(value);
+}
+
+function parseOwnerRepo(repoUrl: string): { owner: string; repo: string } | null {
+	const normalized = repoUrl.trim().replace(/^https:\/\/github\.com\//, '').replace(/\.git$/i, '');
+	const [owner, repo] = normalized.split('/');
+	if (!owner || !repo) return null;
+	return { owner, repo };
+}
+
+function shouldPersistMigratedSettings(loaded: Record<string, unknown>): boolean {
+	return 'skillsRootPath' in loaded
+		|| 'providers' in loaded
+		|| 'githubAppClientId' in loaded
+		|| 'deployStates' in loaded
+		|| !('sourceRootPath' in loaded)
+		|| !('repoOwner' in loaded)
+		|| !('repoName' in loaded)
+		|| !('branch' in loaded)
+		|| !('targetProvider' in loaded)
+		|| !('managedSkillsPath' in loaded)
+		|| !('codexPluginPath' in loaded)
+		|| !('codexPluginName' in loaded);
 }

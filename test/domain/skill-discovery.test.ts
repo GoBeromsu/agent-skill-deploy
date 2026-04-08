@@ -1,63 +1,112 @@
 import { describe, it, expect } from 'vitest';
-import { discoverSkills, type VaultFileListing } from '../../src/domain/skill-discovery';
+import { discoverDeployableFolders } from '../../src/domain/skill-discovery';
+import type { VaultFolderListing } from '../../src/types/skill';
 
-const validSkillMd = `---
-name: My Skill
-description: Does something useful
-tags:
-  - ai
----
-# My Skill
-
-This is the body.`;
-
-describe('discoverSkills', () => {
-	it('finds folders containing SKILL.md', () => {
-		const folders: VaultFileListing[] = [
+describe('discoverDeployableFolders', () => {
+	it('discovers root-note folders via folder-name note + plugin_id', () => {
+		const folders: VaultFolderListing[] = [
 			{
-				folderPath: 'tools/my-skill',
-				folderName: 'my-skill',
+				folderPath: '55. Tools/Skills/obsidian-cli',
+				folderName: 'obsidian-cli',
 				files: [
-					{ relativePath: 'SKILL.md', content: validSkillMd },
-					{ relativePath: 'helper.md', content: '# Helper' },
+					{
+						name: 'obsidian-cli.md',
+						path: '55. Tools/Skills/obsidian-cli/obsidian-cli.md',
+						frontmatter: { plugin_id: 'obsidian-cli' },
+					},
 				],
 			},
 		];
 
-		const skills = discoverSkills(folders);
-		expect(skills).toHaveLength(1);
-		expect(skills[0]?.id).toBe('my-skill');
-		expect(skills[0]?.name).toBe('My Skill');
-		expect(skills[0]?.files).toHaveLength(2);
+		const result = discoverDeployableFolders(folders);
+		expect(result.warnings).toEqual([]);
+		expect(result.folders).toHaveLength(1);
+		expect(result.folders[0]).toMatchObject({
+			folderName: 'obsidian-cli',
+			identityMode: 'root-note',
+			pluginId: 'obsidian-cli',
+			rootNotePath: '55. Tools/Skills/obsidian-cli/obsidian-cli.md',
+		});
 	});
 
-	it('ignores non-skill folders (no SKILL.md)', () => {
-		const folders: VaultFileListing[] = [
+	it('falls back to legacy SKILL.md folders', () => {
+		const folders: VaultFolderListing[] = [
 			{
-				folderPath: 'tools/not-a-skill',
-				folderName: 'not-a-skill',
+				folderPath: '55. Tools/Skills/legacy-skill',
+				folderName: 'legacy-skill',
 				files: [
-					{ relativePath: 'README.md', content: '# Readme' },
+					{ name: 'SKILL.md', path: '55. Tools/Skills/legacy-skill/SKILL.md' },
 				],
 			},
 		];
 
-		const skills = discoverSkills(folders);
-		expect(skills).toHaveLength(0);
+		const result = discoverDeployableFolders(folders);
+		expect(result.folders).toHaveLength(1);
+		expect(result.folders[0]).toMatchObject({
+			folderName: 'legacy-skill',
+			identityMode: 'legacy-skill-md',
+			pluginId: 'legacy-skill',
+			rootNotePath: null,
+		});
 	});
 
-	it('skips folders with invalid SKILL.md (no frontmatter)', () => {
-		const folders: VaultFileListing[] = [
+	it('prefers root-note identity when both root note and SKILL.md exist', () => {
+		const folders: VaultFolderListing[] = [
 			{
-				folderPath: 'tools/broken',
-				folderName: 'broken',
+				folderPath: '55. Tools/Skills/fyc',
+				folderName: 'fyc',
 				files: [
-					{ relativePath: 'SKILL.md', content: 'No frontmatter here' },
+					{ name: 'SKILL.md', path: '55. Tools/Skills/fyc/SKILL.md' },
+					{ name: 'fyc.md', path: '55. Tools/Skills/fyc/fyc.md', frontmatter: { plugin_id: 'fyc' } },
 				],
 			},
 		];
 
-		const skills = discoverSkills(folders);
-		expect(skills).toHaveLength(0);
+		const result = discoverDeployableFolders(folders);
+		expect(result.folders).toHaveLength(1);
+		expect(result.folders[0]?.identityMode).toBe('root-note');
+	});
+
+	it('skips misplaced plugin_id notes and emits a warning', () => {
+		const folders: VaultFolderListing[] = [
+			{
+				folderPath: '55. Tools/Skills/misnamed',
+				folderName: 'misnamed',
+				files: [
+					{
+						name: 'README.md',
+						path: '55. Tools/Skills/misnamed/README.md',
+						frontmatter: { plugin_id: 'wrong-place' },
+					},
+				],
+			},
+		];
+
+		const result = discoverDeployableFolders(folders);
+		expect(result.folders).toHaveLength(0);
+		expect(result.warnings[0]).toContain('misnamed.md');
+	});
+
+	it('does not register nested children below an already deployable folder', () => {
+		const folders: VaultFolderListing[] = [
+			{
+				folderPath: '55. Tools/Skills/parent',
+				folderName: 'parent',
+				files: [
+					{ name: 'parent.md', path: '55. Tools/Skills/parent/parent.md', frontmatter: { plugin_id: 'parent' } },
+				],
+			},
+			{
+				folderPath: '55. Tools/Skills/parent/child',
+				folderName: 'child',
+				files: [
+					{ name: 'child.md', path: '55. Tools/Skills/parent/child/child.md', frontmatter: { plugin_id: 'child' } },
+				],
+			},
+		];
+
+		const result = discoverDeployableFolders(folders);
+		expect(result.folders).toHaveLength(1);
+		expect(result.folders[0]?.folderName).toBe('parent');
 	});
 });

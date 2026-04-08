@@ -1,5 +1,5 @@
 import type { TokenStore } from '../types/token-store';
-import type { StoredTokens } from '../types/settings';
+import type { StoredAccessToken } from '../types/settings';
 import type { PluginLogger } from '../shared/plugin-logger';
 
 const CONFIG_DIR_NAME = '.obsidian-skill-deploy';
@@ -18,7 +18,7 @@ export class FileSystemTokenStore implements TokenStore {
 		this.tokenPath = path.join(this.configDir, TOKEN_FILE_NAME);
 	}
 
-	async save(tokens: StoredTokens): Promise<void> {
+	async save(tokens: StoredAccessToken): Promise<void> {
 		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- fs/promises must be loaded via require() in Obsidian's Node context
 		const fs = require('fs/promises') as {
 			mkdir: (path: string, opts: { recursive: boolean }) => Promise<void>;
@@ -29,7 +29,7 @@ export class FileSystemTokenStore implements TokenStore {
 		this.logger.debug('Tokens saved');
 	}
 
-	async load(): Promise<StoredTokens | null> {
+	async load(): Promise<StoredAccessToken | null> {
 		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- fs/promises must be loaded via require() in Obsidian's Node context
 		const fs = require('fs/promises') as {
 			readFile: (path: string, encoding: string) => Promise<string>;
@@ -37,7 +37,7 @@ export class FileSystemTokenStore implements TokenStore {
 		try {
 			const data = await fs.readFile(this.tokenPath, 'utf-8');
 			this.logger.debug('Tokens loaded');
-			return JSON.parse(data) as StoredTokens;
+			return JSON.parse(data) as StoredAccessToken;
 		} catch {
 			return null;
 		}

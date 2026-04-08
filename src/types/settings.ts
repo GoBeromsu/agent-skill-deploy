@@ -1,22 +1,26 @@
-import type { ProviderConfig } from './provider';
+export type DeployTargetProvider = 'claude-marketplace' | 'codex-plugin';
 
 export interface SkillDeploySettings {
-	skillsRootPath: string;
-	providers: ProviderConfig[];
-	githubAppClientId: string;
-	deployStates: Record<string, DeployStateEntry>;
+	sourceRootPath: string;
+	repoOwner: string;
+	repoName: string;
+	branch: string;
+	targetProvider: DeployTargetProvider;
+	managedSkillsPath: string;
+	codexPluginPath: string;
+	codexPluginName: string;
+	deployState: DeployStateEntry | null;
 	plugin_notices?: { muted: Record<string, boolean> };
 }
 
-export interface StoredTokens {
-	accessToken: string;
-	refreshToken: string;
-	expiresAt: number;
+export interface StoredAccessToken {
+	token: string;
 	username: string;
+	validatedAt: string;
 }
 
 export interface DeployStateEntry {
-	lastDeployTreeSha: string;
+	lastRemoteTreeSha: string | null;
 	lastDeployedAt: string;
 	commitSha: string;
 }
