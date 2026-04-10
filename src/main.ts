@@ -91,14 +91,11 @@ export default class SkillDeployPlugin extends Plugin {
 
 		this.addSettingTab(new SkillDeploySettingTab(
 			this.app,
-			{
-				settings: this.settings,
-				saveSettings: () => this.saveSettings(),
-				validateConfiguration: () => deployCommand.validateConfiguration(),
-			},
+			this,
 			this.auth,
 			this.logger,
 			this.notices,
+			() => deployCommand.validateConfiguration(),
 		));
 
 		this.logger.info('Agent Skill Deploy plugin loaded');

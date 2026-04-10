@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import type { GitHubConnectionState, SkillDeploySettings } from '../types/settings';
 import type { GitHubAuth } from './github-auth';
 import type { PluginLogger } from '../shared/plugin-logger';
@@ -8,7 +8,6 @@ import { renderAdvancedConnectionSettings } from './advanced-connection-settings
 interface SettingsHost {
 	settings: SkillDeploySettings;
 	saveSettings(): Promise<void>;
-	validateConfiguration(): Promise<void>;
 }
 
 export class SkillDeploySettingTab extends PluginSettingTab {
@@ -16,15 +15,24 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 	private readonly auth: GitHubAuth;
 	private readonly logger: PluginLogger;
 	private readonly notices: PluginNotices;
+	private readonly validateConfiguration: () => Promise<void>;
 	private pendingToken = '';
 	private showAdvancedConnection = false;
 
-	constructor(app: App, host: SettingsHost, auth: GitHubAuth, logger: PluginLogger, notices: PluginNotices) {
-		super(app, host as never);
-		this.host = host;
+	constructor(
+		app: App,
+		plugin: Plugin & SettingsHost,
+		auth: GitHubAuth,
+		logger: PluginLogger,
+		notices: PluginNotices,
+		validateConfiguration: () => Promise<void>,
+	) {
+		super(app, plugin);
+		this.host = plugin;
 		this.auth = auth;
 		this.logger = logger;
 		this.notices = notices;
+		this.validateConfiguration = validateConfiguration;
 	}
 
 	display(): void {
@@ -78,7 +86,7 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 			.addButton(btn => btn
 				.setButtonText('Validate')
 				.onClick(async () => {
-					await this.host.validateConfiguration();
+					await this.validateConfiguration();
 				}))
 			.addButton(btn => btn
 				.setButtonText('Disconnect')
