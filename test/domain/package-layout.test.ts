@@ -31,6 +31,7 @@ function makeSettings(overrides: Partial<SkillDeploySettings>): SkillDeploySetti
 		repoOwner: 'GoBeromsu',
 		repoName: 'claude-code-plugins',
 		branch: 'main',
+		managedSetupApprovedAt: null,
 		targetProvider: 'claude-marketplace',
 		managedSkillsPath: 'skills',
 		codexPluginPath: 'plugins/ataraxia-skills',

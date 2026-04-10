@@ -4,14 +4,17 @@ import { PluginLogger } from './shared/plugin-logger';
 import { PluginNotices, type NoticeCatalog } from './shared/plugin-notices';
 import { GitHubApiClient } from './ui/github-api';
 import { GitHubAuth } from './ui/github-auth';
+import { GitHubLocalAuth } from './ui/github-local-auth';
 import { FileSystemTokenStore } from './ui/token-store';
 import { VaultAdapter } from './ui/vault-adapter';
 import { DeployCommand } from './ui/deploy-command';
 import { SkillDeploySettingTab } from './ui/settings-tab';
 
 const NOTICE_CATALOG: NoticeCatalog = {
-	auth_required: { template: 'Configure a GitHub PAT first.', timeout: 5000, immutable: true },
-	auth_success: { template: 'Stored GitHub PAT for {{username}}.', timeout: 3000 },
+	auth_required: { template: 'Connect GitHub or configure a token fallback first.', timeout: 5000, immutable: true },
+	auth_success: { template: 'Stored GitHub token fallback for {{username}}.', timeout: 3000 },
+	setup_approved: { template: 'Managed setup approved for {{repo}}.', timeout: 4000 },
+	setup_disconnected: { template: 'Managed setup disconnected. Deploy is now disabled.', timeout: 4000 },
 	no_folders_found: { template: 'No deployable folders found under {{path}}.', timeout: 5000 },
 	config_valid: { template: 'Configuration valid. Found {{total}} deployable folders ({{warnings}} warnings).', timeout: 5000 },
 	config_invalid: { template: 'Configuration invalid: {{errors}}', timeout: 10000 },
@@ -26,6 +29,7 @@ const DEFAULT_SETTINGS: SkillDeploySettings = {
 	repoOwner: 'GoBeromsu',
 	repoName: 'claude-code-plugins',
 	branch: 'main',
+	managedSetupApprovedAt: null,
 	targetProvider: 'claude-marketplace',
 	managedSkillsPath: 'skills',
 	codexPluginPath: 'plugins/ataraxia-skills',
@@ -55,7 +59,8 @@ export default class SkillDeployPlugin extends Plugin {
 
 		const githubApi = new GitHubApiClient(this.logger);
 		const tokenStore = new FileSystemTokenStore(this.logger);
-		this.auth = new GitHubAuth(tokenStore, githubApi, this.logger);
+		const localAuth = new GitHubLocalAuth();
+		this.auth = new GitHubAuth(tokenStore, githubApi, this.logger, localAuth);
 		const vaultAdapter = new VaultAdapter(this.app);
 
 		const deployCommand = new DeployCommand(
@@ -85,7 +90,15 @@ export default class SkillDeployPlugin extends Plugin {
 		});
 
 		this.addSettingTab(new SkillDeploySettingTab(
-			this.app, this, this.auth, this.logger, this.notices,
+			this.app,
+			{
+				settings: this.settings,
+				saveSettings: () => this.saveSettings(),
+				validateConfiguration: () => deployCommand.validateConfiguration(),
+			},
+			this.auth,
+			this.logger,
+			this.notices,
 		));
 
 		this.logger.info('Agent Skill Deploy plugin loaded');
@@ -121,6 +134,8 @@ export default class SkillDeployPlugin extends Plugin {
 
 		const branch = readString(loaded['branch']);
 		if (branch) settings.branch = branch;
+
+		settings.managedSetupApprovedAt = readNullableString(loaded['managedSetupApprovedAt']);
 
 		const targetProvider = readString(loaded['targetProvider']);
 		if (targetProvider === 'claude-marketplace' || targetProvider === 'codex-plugin') {
@@ -192,6 +207,7 @@ function shouldPersistMigratedSettings(loaded: Record<string, unknown>): boolean
 		|| !('repoOwner' in loaded)
 		|| !('repoName' in loaded)
 		|| !('branch' in loaded)
+		|| !('managedSetupApprovedAt' in loaded)
 		|| !('targetProvider' in loaded)
 		|| !('managedSkillsPath' in loaded)
 		|| !('codexPluginPath' in loaded)

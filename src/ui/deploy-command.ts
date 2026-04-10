@@ -25,9 +25,15 @@ export class DeployCommand {
 	) {}
 
 	async execute(): Promise<void> {
+		if (!this.settings.managedSetupApprovedAt) {
+			this.notices.show('config_invalid', { errors: 'Approve the managed setup before deploying.' });
+			return;
+		}
+
+		const connection = await this.auth.getConnectionState();
 		const token = await this.auth.getToken();
 		if (!token) {
-			this.notices.show('auth_required');
+			this.notices.show('config_invalid', { errors: this.getConnectionErrors(connection).join(' | ') });
 			return;
 		}
 
@@ -134,6 +140,9 @@ export class DeployCommand {
 
 	async validateConfiguration(): Promise<void> {
 		const errors: string[] = [];
+		if (!this.settings.managedSetupApprovedAt) {
+			errors.push('Managed setup has not been approved yet');
+		}
 		if (!this.vaultAdapter.folderExists(this.settings.sourceRootPath)) {
 			errors.push(`Source root not found: ${this.settings.sourceRootPath}`);
 		}
@@ -141,10 +150,8 @@ export class DeployCommand {
 		if (!this.settings.repoName.trim()) errors.push('Repository name is required');
 		if (!this.settings.branch.trim()) errors.push('Branch is required');
 
-		const token = await this.auth.getToken();
-		if (!token) {
-			errors.push('GitHub PAT is not configured');
-		}
+		const connection = await this.auth.getConnectionState();
+		errors.push(...this.getConnectionErrors(connection));
 
 		const local = this.vaultAdapter.folderExists(this.settings.sourceRootPath)
 			? await this.collectLocalFolders()
@@ -180,6 +187,16 @@ export class DeployCommand {
 
 	private buildCommitMessage(plan: MirrorPlan): string {
 		return `mirror: sync ${plan.addedFolders.length + plan.updatedFolders.length} folder(s) and delete ${plan.deletedFolders.length}`;
+	}
+
+	private getConnectionErrors(connection: Awaited<ReturnType<GitHubAuth['getConnectionState']>>): string[] {
+		if (connection.authSource !== 'none') {
+			return [];
+		}
+		if (connection.deployBlockedReasons.length > 0) {
+			return connection.deployBlockedReasons;
+		}
+		return ['Connect GitHub or configure a token fallback'];
 	}
 
 	private async maybeRefreshDeployState(remoteTreeSha: string | null): Promise<void> {

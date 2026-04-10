@@ -1,13 +1,14 @@
-/* eslint-disable obsidianmd/ui/sentence-case -- settings contain proper nouns (GitHub App, Client ID) and example paths */
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import type { SkillDeploySettings } from '../types/settings';
+import type { GitHubConnectionState, SkillDeploySettings } from '../types/settings';
 import type { GitHubAuth } from './github-auth';
 import type { PluginLogger } from '../shared/plugin-logger';
 import type { PluginNotices } from '../shared/plugin-notices';
+import { renderAdvancedConnectionSettings } from './advanced-connection-settings';
 
 interface SettingsHost {
 	settings: SkillDeploySettings;
 	saveSettings(): Promise<void>;
+	validateConfiguration(): Promise<void>;
 }
 
 export class SkillDeploySettingTab extends PluginSettingTab {
@@ -15,6 +16,8 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 	private readonly auth: GitHubAuth;
 	private readonly logger: PluginLogger;
 	private readonly notices: PluginNotices;
+	private pendingToken = '';
+	private showAdvancedConnection = false;
 
 	constructor(app: App, host: SettingsHost, auth: GitHubAuth, logger: PluginLogger, notices: PluginNotices) {
 		super(app, host as never);
@@ -25,154 +28,131 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		void this.render();
+	}
+
+	private async render(): Promise<void> {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		this.renderAuthentication(containerEl);
-		this.renderSkillsSource(containerEl);
-		this.renderTarget(containerEl);
-		this.renderRepository(containerEl);
+		const connection = await this.auth.getConnectionState();
+		this.renderManagedPublishing(containerEl, connection);
+		this.renderSource(containerEl);
+		if (this.showAdvancedConnection) this.renderAdvancedConnection(containerEl, connection);
 	}
 
-	private renderAuthentication(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Authentication').setHeading();
-		let pendingToken = '';
+	private renderManagedPublishing(containerEl: HTMLElement, connection: GitHubConnectionState): void {
+		new Setting(containerEl).setName('Managed publishing').setHeading();
 
-		const authSetting = new Setting(containerEl)
-			.setName('GitHub personal access token');
-
-		void this.auth.getUsername().then(username => {
-			authSetting.setDesc(
-				username
-					? `Stored for ${username}. Use a PAT with repository Contents write access.`
-					: 'Store a GitHub PAT with repository Contents write access.',
-			);
-			authSetting.addText(text => {
-				text.setPlaceholder('github_pat_...');
-				text.inputEl.type = 'password';
-				text.onChange((value) => {
-					pendingToken = value.trim();
-				});
-			});
-			authSetting.addButton(btn => btn
-				.setButtonText('Save token')
+		new Setting(containerEl)
+			.setName('Setup status')
+			.setDesc(this.describeSetupStatus(connection))
+			.addButton(btn => btn
+				.setButtonText(this.host.settings.managedSetupApprovedAt ? 'Approved' : 'Approve recommended setup')
 				.setCta()
+				.setDisabled(this.host.settings.managedSetupApprovedAt !== null)
 				.onClick(async () => {
-					try {
-						const stored = await this.auth.setToken(pendingToken);
-						this.notices.show('auth_success', { username: stored.username });
-						this.display();
-					} catch (err) {
-						this.logger.noticeError('PAT validation failed', err);
-					}
+					this.host.settings.managedSetupApprovedAt = new Date().toISOString();
+					await this.host.saveSettings();
+					this.notices.show('setup_approved', { repo: this.getTargetRepoLabel() });
+					void this.render();
 				}));
-			authSetting.addButton(btn => btn
-				.setButtonText('Clear token')
+
+		new Setting(containerEl)
+			.setName('Target repository')
+			.setDesc(this.getTargetRepoLabel());
+
+		new Setting(containerEl)
+			.setName('GitHub capability')
+			.setDesc(this.describeCapabilityState(connection));
+
+		new Setting(containerEl)
+			.setName('Connection actions')
+			.setDesc('Manage the current connection without returning to raw provider settings by default.')
+			.addButton(btn => btn
+				.setButtonText(this.showAdvancedConnection ? 'Hide advanced settings' : 'Edit connection')
+				.onClick(() => {
+					this.showAdvancedConnection = !this.showAdvancedConnection;
+					void this.render();
+				}))
+			.addButton(btn => btn
+				.setButtonText('Validate')
+				.onClick(async () => {
+					await this.host.validateConfiguration();
+				}))
+			.addButton(btn => btn
+				.setButtonText('Disconnect')
 				.setWarning()
 				.onClick(async () => {
+					this.host.settings.managedSetupApprovedAt = null;
+					this.host.settings.deployState = null;
 					await this.auth.logout();
-					this.display();
+					await this.host.saveSettings();
+					this.notices.show('setup_disconnected');
+					void this.render();
 				}));
-		});
 	}
 
-	private renderSkillsSource(containerEl: HTMLElement): void {
+	private renderSource(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Source').setHeading();
-
 		new Setting(containerEl)
 			.setName('Source root path')
 			.setDesc('Vault folder to scan recursively for deployable folders.')
 			.addText(text => text
-				.setPlaceholder('55. Tools/Skills')
+				.setPlaceholder('Path to your skills folder')
 				.setValue(this.host.settings.sourceRootPath)
-				.onChange(async (value) => {
+				.onChange(async value => {
 					this.host.settings.sourceRootPath = value.trim();
 					await this.host.saveSettings();
 				}));
 	}
 
-	private renderRepository(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Repository').setHeading();
-
-		new Setting(containerEl)
-			.setName('Repository owner')
-			.addText(text => text
-				.setPlaceholder('GoBeromsu')
-				.setValue(this.host.settings.repoOwner)
-				.onChange(async (value) => {
-					this.host.settings.repoOwner = value.trim();
-					await this.host.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Repository name')
-			.addText(text => text
-				.setPlaceholder('claude-code-plugins')
-				.setValue(this.host.settings.repoName)
-				.onChange(async (value) => {
-					this.host.settings.repoName = value.trim();
-					await this.host.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Branch')
-			.addText(text => text
-				.setPlaceholder('main')
-				.setValue(this.host.settings.branch)
-				.onChange(async (value) => {
-					this.host.settings.branch = value.trim() || 'main';
-					await this.host.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Managed skills path')
-			.setDesc('Claude marketplace skills subtree. Usually `skills`.')
-			.addText(text => text
-				.setPlaceholder('skills')
-				.setValue(this.host.settings.managedSkillsPath)
-				.onChange(async (value) => {
-					this.host.settings.managedSkillsPath = value.trim() || 'skills';
-					await this.host.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Codex plugin path')
-			.setDesc('Plugin package root for Codex builds.')
-			.addText(text => text
-				.setPlaceholder('plugins/ataraxia-skills')
-				.setValue(this.host.settings.codexPluginPath)
-				.onChange(async (value) => {
-					this.host.settings.codexPluginPath = value.trim() || 'plugins/ataraxia-skills';
-					await this.host.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Codex plugin name')
-			.setDesc('The `.codex-plugin/plugin.json` name field.')
-			.addText(text => text
-				.setPlaceholder('ataraxia-skills')
-				.setValue(this.host.settings.codexPluginName)
-				.onChange(async (value) => {
-					this.host.settings.codexPluginName = value.trim() || 'ataraxia-skills';
-					await this.host.saveSettings();
-				}));
+	private describeSetupStatus(connection: GitHubConnectionState): string {
+		if (!this.host.settings.managedSetupApprovedAt) {
+			return `Approve the recommended managed setup for ${this.getTargetRepoLabel()} to enable deploy. Current auth source: ${this.describeAuthSource(connection)}.`;
+		}
+		return `Managed setup approved. Deploy will target ${this.getTargetRepoLabel()} using ${this.describeAuthSource(connection)} when available.`;
 	}
 
-	private renderTarget(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName('Target').setHeading();
+	private describeCapabilityState(connection: GitHubConnectionState): string {
+		const localStatus = connection.localCredentialAvailable
+			? `Local GitHub reuse is available${connection.username ? ` for ${connection.username}` : ''}.`
+			: `Local GitHub reuse is unavailable. ${connection.localBlockedReasons.join(' ')}`.trim();
+		const fallbackStatus = connection.tokenFallbackAvailable
+			? 'Token fallback is configured.'
+			: 'Token fallback is not configured.';
+		const deployStatus = connection.deployBlockedReasons.length === 0
+			? 'Deploy prerequisites are satisfied.'
+			: `Deploy is blocked: ${connection.deployBlockedReasons.join(' ')}`;
+		return [localStatus, fallbackStatus, deployStatus].join('\n');
+	}
 
-		new Setting(containerEl)
-			.setName('Target provider')
-			.setDesc('Claude uses a marketplace repo shape. Codex uses a plugin package shape.')
-			.addDropdown(dropdown => {
-				dropdown.addOption('claude-marketplace', 'Claude marketplace');
-				dropdown.addOption('codex-plugin', 'Codex plugin');
-				dropdown.setValue(this.host.settings.targetProvider);
-				dropdown.onChange(async (value) => {
-					this.host.settings.targetProvider = value as SkillDeploySettings['targetProvider'];
-					await this.host.saveSettings();
-					this.display();
-				});
-			});
+	private describeAuthSource(connection: GitHubConnectionState): string {
+		if (connection.authSource === 'stored-token') return 'the stored token fallback';
+		if (connection.authSource === 'local-gh') return 'reused local GitHub CLI credentials';
+		return 'no active GitHub connection';
+	}
+
+	private getTargetRepoLabel(): string {
+		return `${this.host.settings.repoOwner}/${this.host.settings.repoName}@${this.host.settings.branch}`;
+	}
+
+	private renderAdvancedConnection(containerEl: HTMLElement, connection: GitHubConnectionState): void {
+		renderAdvancedConnectionSettings({
+			containerEl,
+			settings: this.host.settings,
+			connection,
+			auth: this.auth,
+			logger: this.logger,
+			notices: this.notices,
+			pendingToken: this.pendingToken,
+			setPendingToken: value => {
+				this.pendingToken = value;
+			},
+			saveSettings: () => this.host.saveSettings(),
+			rerender: () => {
+				void this.render();
+			},
+		});
 	}
 }
