@@ -20,8 +20,7 @@
     "paths": {
       "@domain/*": ["domain/*"],
       "@ui/*": ["ui/*"],
-      "@utils/*": ["utils/*"],
-      "@shared/*": ["shared/*"]
+      "@utils/*": ["utils/*"]
     },
     "lib": [
       "DOM",
@@ -32,7 +31,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts",
-    "tooling/shared/src-shared/**/*.ts"
+    "test/**/*.ts"
   ]
 }

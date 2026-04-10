@@ -85,6 +85,12 @@ The deploy flow is:
   - `<plugin-root>/skills/<skill-name>/...`
 - The vault source folders remain unchanged; only the packaged output differs by provider
 
+## Shared Boundary
+
+- Runtime implementation under `src/` is owned locally in this repo.
+- Boiler-template sync is limited to repo-agnostic contract and harness surfaces such as CI/release scripts and lint configuration.
+- Provider packaging, deploy-state handling, and plugin UI behavior stay local even when the surrounding workflow contracts are shared.
+
 ## Architecture
 
 ```text
@@ -104,7 +110,7 @@ src/
 │   ├── vault-adapter.ts    # Obsidian vault scanning + source file reading
 │   └── settings-tab.ts     # Source/repo/provider settings UI
 ├── types/
-└── shared/
+└── shared/              # Repo-local plugin support modules
 ```
 
 ## Development
