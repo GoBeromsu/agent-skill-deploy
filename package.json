@@ -11,6 +11,7 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
+		"release:check": "node scripts/validate-release-metadata.mjs",
 		"test": "vitest run",
 		"ci": "pnpm run build && pnpm run lint && pnpm run test",
 		"prepare": "husky",

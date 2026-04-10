@@ -32,6 +32,10 @@ pnpm run build
 
 Copy `main.js`, `manifest.json`, and `styles.css` to your vault's `.obsidian/plugins/skill-deploy/`.
 
+## Current Release Behavior
+
+`0.1.x` still uses a PAT-first deploy flow and exposes provider/repository settings directly in the plugin UI. The longer-term direction is a managed publishing workflow, but the current shipped release should be understood as a transitional step rather than the final product UX.
+
 ## Setup
 
 1. Open Settings → Agent Skill Deploy
@@ -86,6 +90,11 @@ The deploy flow is:
   - `<plugin-root>/.codex-plugin/plugin.json`
   - `<plugin-root>/skills/<skill-name>/...`
 - The vault source folders remain unchanged; only the packaged output differs by provider
+
+## Release Notes for Maintainers
+
+- Automated releases now accept both `vX.Y.Z` and `X.Y.Z` tags when validating release metadata, so the default `pnpm version` tag format does not require manual recovery.
+- New automated releases are expected to follow the npm-style `v`-prefixed tag path created by `pnpm version`.
 
 ## Shared Boundary
 
