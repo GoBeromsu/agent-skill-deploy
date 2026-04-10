@@ -15,6 +15,7 @@ export function discoverDeployableFolders(folders: readonly VaultFolderListing[]
 		const rootNoteName = `${folder.folderName}.md`;
 		const rootNote = folder.files.find(file => file.name === rootNoteName);
 		const rootPluginId = getPluginId(rootNote?.frontmatter);
+		const publishGroup = getPublishGroup(rootNote?.frontmatter);
 
 		if (rootPluginId) {
 			selected.push({
@@ -22,6 +23,7 @@ export function discoverDeployableFolders(folders: readonly VaultFolderListing[]
 				folderPath: folder.folderPath,
 				identityMode: 'root-note',
 				pluginId: rootPluginId,
+				publishGroup,
 				rootNotePath: rootNote?.path ?? null,
 			});
 			continue;
@@ -47,6 +49,7 @@ export function discoverDeployableFolders(folders: readonly VaultFolderListing[]
 			folderPath: folder.folderPath,
 			identityMode: 'legacy-skill-md',
 			pluginId: folder.folderName,
+			publishGroup: null,
 			rootNotePath: null,
 		});
 	}
@@ -59,6 +62,15 @@ function getPluginId(frontmatter?: Record<string, unknown>): string | null {
 	if (typeof pluginId !== 'string') return null;
 
 	const normalized = pluginId.trim();
+	return normalized === '' ? null : normalized;
+}
+
+
+function getPublishGroup(frontmatter?: Record<string, unknown>): string | null {
+	const publishGroup = frontmatter?.['publish_group'];
+	if (typeof publishGroup !== 'string') return null;
+
+	const normalized = publishGroup.trim();
 	return normalized === '' ? null : normalized;
 }
 

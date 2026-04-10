@@ -17,6 +17,7 @@ export interface DeployableFolderCandidate {
 	readonly folderPath: string;
 	readonly identityMode: DeployableIdentityMode;
 	readonly pluginId: string;
+	readonly publishGroup: string | null;
 	readonly rootNotePath: string | null;
 }
 

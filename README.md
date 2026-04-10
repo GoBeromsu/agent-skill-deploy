@@ -9,6 +9,7 @@ The vault is the source of truth. The plugin scans a source root, detects deploy
 - **Vault-first source model** — keep the vault as the SSOT
 - **Recursive discovery** — scan the source root recursively
 - **Dual folder detection** — support root-note folders and legacy `SKILL.md`
+- **Bounded publish grouping** — optional `publish_group` frontmatter adds one nested grouping level
 - **Provider-specific packaging** — Claude marketplace layout or Codex plugin layout
 - **Exact mirror deploy** — add, update, and delete package outputs in one atomic Git commit
 - **GitHub PAT auth** — simple personal access token setup
@@ -60,8 +61,8 @@ The deploy flow is:
    - `<folder-name>/<folder-name>.md` with frontmatter `plugin_id`
    - or legacy `SKILL.md`
 3. Build a provider-specific package tree
-   - Claude: `skills/<skill-name>/...` plus `.claude-plugin/marketplace.json`
-   - Codex: `<plugin-root>/.codex-plugin/plugin.json` plus `<plugin-root>/skills/<skill-name>/...`
+   - Claude: `skills/<skill-name>/...` or `skills/<publish-group>/<skill-name>/...` plus `.claude-plugin/marketplace.json`
+   - Codex: `<plugin-root>/.codex-plugin/plugin.json` plus `<plugin-root>/skills/<skill-name>/...` or `<plugin-root>/skills/<publish-group>/<skill-name>/...`
 4. Compare the packaged output against the remote managed surface
 4. Create one atomic Git commit for all adds, updates, and deletions
 5. Store a hash of the managed packaged output for future conflict checks
@@ -69,6 +70,7 @@ The deploy flow is:
 ## Detection Model
 
 - **Root-note mode** — the folder contains `<folder-name>.md` with `plugin_id` in frontmatter
+- Optional root-note frontmatter `publish_group` adds one extra grouped path segment during packaging
 - **Legacy mode** — the folder contains `SKILL.md`
 - If both exist, root-note mode wins for identity and `SKILL.md` is mirrored as a normal file
 - Nested folders are preserved as folder contents, not split into separate deploy units once a parent folder is already deployable

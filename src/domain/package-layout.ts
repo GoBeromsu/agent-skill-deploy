@@ -23,9 +23,10 @@ async function buildClaudePackaging(
 	const files: PackagedFile[] = [];
 
 	for (const folder of localFolders) {
+		const publishPath = getPublishedFolderPath(managedSkillsPath, folder);
 		for (const file of folder.files) {
 			files.push({
-				path: normalizeRepoPath(managedSkillsPath, folder.folderName, file.relativePath),
+				path: normalizeRepoPath(publishPath, file.relativePath),
 				content: file.content,
 				encoding: file.encoding,
 				blobSha: file.blobSha,
@@ -41,7 +42,7 @@ async function buildClaudePackaging(
 		const rewritten = rewriteClaudeMarketplace(
 			marketplaceFile.content,
 			managedSkillsPath,
-			new Set(localFolders.map(folder => folder.folderName)),
+			new Map(localFolders.map(folder => [folder.folderName, getPublishedFolderPath(managedSkillsPath, folder)])),
 		);
 		files.push({
 			path: '.claude-plugin/marketplace.json',
@@ -70,9 +71,10 @@ function buildCodexPackaging(
 	const files: PackagedFile[] = [];
 
 	for (const folder of localFolders) {
+		const publishPath = getPublishedFolderPath(managedSkillsPath, folder);
 		for (const file of folder.files) {
 			files.push({
-				path: normalizeRepoPath(managedSkillsPath, folder.folderName, file.relativePath),
+				path: normalizeRepoPath(publishPath, file.relativePath),
 				content: file.content,
 				encoding: file.encoding,
 				blobSha: file.blobSha,
@@ -108,10 +110,16 @@ function buildCodexPackaging(
 	};
 }
 
+function getPublishedFolderPath(managedSkillsPath: string, folder: DeployableFolder): string {
+	return folder.publishGroup
+		? normalizeRepoPath(managedSkillsPath, folder.publishGroup, folder.folderName)
+		: normalizeRepoPath(managedSkillsPath, folder.folderName);
+}
+
 function rewriteClaudeMarketplace(
 	content: string,
 	managedSkillsPath: string,
-	localFolderNames: ReadonlySet<string>,
+	localFolderPaths: ReadonlyMap<string, string>,
 ): { content: string; blobSha: string; warnings: string[] } {
 	const warnings: string[] = [];
 
@@ -128,8 +136,13 @@ function rewriteClaudeMarketplace(
 				plugin.skills = skillEntries.map((value: unknown) => {
 					if (typeof value !== 'string') return value;
 					const folderName = value.replace(/^\.\/+/, '').split('/').filter(Boolean).pop();
-					if (!folderName || !localFolderNames.has(folderName)) return value;
-					return `${normalizedSkillsBase}/${folderName}`;
+					if (!folderName) return value;
+					const publishedPath = localFolderPaths.get(folderName);
+					if (!publishedPath) return value;
+					const relativeManagedPath = publishedPath.startsWith(`${managedSkillsPath}/`)
+						? publishedPath.slice(managedSkillsPath.length + 1)
+						: folderName;
+					return `${normalizedSkillsBase}/${relativeManagedPath}`;
 				});
 			}
 		}

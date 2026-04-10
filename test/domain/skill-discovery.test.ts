@@ -26,6 +26,29 @@ describe('discoverDeployableFolders', () => {
 			identityMode: 'root-note',
 			pluginId: 'obsidian-cli',
 			rootNotePath: '55. Tools/Skills/obsidian-cli/obsidian-cli.md',
+			publishGroup: null,
+		});
+	});
+
+	it('captures optional publish_group from the root note frontmatter', () => {
+		const folders: VaultFolderListing[] = [
+			{
+				folderPath: '55. Tools/Skills/obsidian-cli',
+				folderName: 'obsidian-cli',
+				files: [
+					{
+						name: 'obsidian-cli.md',
+						path: '55. Tools/Skills/obsidian-cli/obsidian-cli.md',
+						frontmatter: { plugin_id: 'obsidian-cli', publish_group: 'dev' },
+					},
+				],
+			},
+		];
+
+		const result = discoverDeployableFolders(folders);
+		expect(result.folders[0]).toMatchObject({
+			pluginId: 'obsidian-cli',
+			publishGroup: 'dev',
 		});
 	});
 
@@ -47,6 +70,7 @@ describe('discoverDeployableFolders', () => {
 			identityMode: 'legacy-skill-md',
 			pluginId: 'legacy-skill',
 			rootNotePath: null,
+			publishGroup: null,
 		});
 	});
 
