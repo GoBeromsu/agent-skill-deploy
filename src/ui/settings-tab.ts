@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, FuzzySuggestModal, Plugin, PluginSettingTab, Setting, TFolder, TextComponent } from 'obsidian';
 import type { GitHubConnectionState, SkillDeploySettings } from '../types/settings';
 import type { GitHubAuth } from './github-auth';
 import type { PluginLogger } from '../shared/plugin-logger';
@@ -8,6 +8,29 @@ import { renderAdvancedConnectionSettings } from './advanced-connection-settings
 interface SettingsHost {
 	settings: SkillDeploySettings;
 	saveSettings(): Promise<void>;
+}
+
+function resolveVaultFolderPath(folder: TFolder): string {
+	return folder.path === '/' ? '' : folder.path;
+}
+
+class VaultFolderSuggestModal extends FuzzySuggestModal<TFolder> {
+	constructor(app: App, private readonly onChoose: (folder: TFolder) => void) {
+		super(app);
+		this.setPlaceholder('Type to search vault folders…');
+	}
+
+	getItems(): TFolder[] {
+		return this.app.vault.getAllFolders(true);
+	}
+
+	getItemText(folder: TFolder): string {
+		return folder.path === '/' ? '/ (vault root)' : folder.path;
+	}
+
+	onChooseItem(folder: TFolder): void {
+		this.onChoose(folder);
+	}
 }
 
 export class SkillDeploySettingTab extends PluginSettingTab {
@@ -103,16 +126,34 @@ export class SkillDeploySettingTab extends PluginSettingTab {
 
 	private renderSource(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Source').setHeading();
+		let sourceRootText: TextComponent | null = null;
 		new Setting(containerEl)
 			.setName('Source root path')
-			.setDesc('Vault folder to scan recursively for deployable folders.')
-			.addText(text => text
-				.setPlaceholder('Path to your skills folder')
-				.setValue(this.host.settings.sourceRootPath)
-				.onChange(async value => {
-					this.host.settings.sourceRootPath = value.trim();
-					await this.host.saveSettings();
-				}));
+			.setDesc('Choose or type the vault folder to scan recursively for deployable folders.')
+			.addText(text => {
+				sourceRootText = text;
+				return text
+					.setPlaceholder('Path to your skills folder')
+					.setValue(this.host.settings.sourceRootPath)
+					.onChange(async value => {
+						this.host.settings.sourceRootPath = value.trim();
+						await this.host.saveSettings();
+					});
+			})
+			.addButton((button) => {
+				button
+					.setIcon('folder')
+					.setTooltip('Pick vault folder')
+					.onClick(() => {
+						new VaultFolderSuggestModal(this.app, (folder) => {
+							const nextValue = resolveVaultFolderPath(folder);
+							this.host.settings.sourceRootPath = nextValue;
+							void this.host.saveSettings();
+							sourceRootText?.setValue(nextValue);
+						}).open();
+					});
+				button.buttonEl.setAttribute('aria-label', 'Pick vault folder');
+			});
 	}
 
 	private describeSetupStatus(connection: GitHubConnectionState): string {
