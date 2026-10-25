@@ -126,5 +126,5 @@ export default tseslint.config(
 			'import/no-nodejs-modules': 'off',
 		},
 	},
-	globalIgnores(['**/main.js', 'dist/', 'node_modules/', 'coverage/']),
+	globalIgnores(['**/*.mjs', 'eslint.config.mts', '**/main.js', 'dist/', 'node_modules/', 'coverage/']),
 );
