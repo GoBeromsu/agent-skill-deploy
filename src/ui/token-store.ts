@@ -10,16 +10,16 @@ export class FileSystemTokenStore implements TokenStore {
 	private readonly tokenPath: string;
 
 	constructor(private readonly logger: PluginLogger) {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- os must be loaded via require() in Obsidian's Node context
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- os must be loaded via require() in Obsidian's Node context
 		const os = require('os') as { homedir: () => string };
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- path must be loaded via require() in Obsidian's Node context
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- path must be loaded via require() in Obsidian's Node context
 		const path = require('path') as { join: (...args: string[]) => string };
 		this.configDir = path.join(os.homedir(), CONFIG_DIR_NAME);
 		this.tokenPath = path.join(this.configDir, TOKEN_FILE_NAME);
 	}
 
 	async save(tokens: StoredAccessToken): Promise<void> {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- fs/promises must be loaded via require() in Obsidian's Node context
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- fs/promises must be loaded via require() in Obsidian's Node context
 		const fs = require('fs/promises') as {
 			mkdir: (path: string, opts: { recursive: boolean }) => Promise<void>;
 			writeFile: (path: string, data: string, opts: { mode: number }) => Promise<void>;
@@ -30,7 +30,7 @@ export class FileSystemTokenStore implements TokenStore {
 	}
 
 	async load(): Promise<StoredAccessToken | null> {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- fs/promises must be loaded via require() in Obsidian's Node context
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- fs/promises must be loaded via require() in Obsidian's Node context
 		const fs = require('fs/promises') as {
 			readFile: (path: string, encoding: string) => Promise<string>;
 		};
@@ -44,7 +44,7 @@ export class FileSystemTokenStore implements TokenStore {
 	}
 
 	async clear(): Promise<void> {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- fs/promises must be loaded via require() in Obsidian's Node context
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- fs/promises must be loaded via require() in Obsidian's Node context
 		const fs = require('fs/promises') as {
 			unlink: (path: string) => Promise<void>;
 		};

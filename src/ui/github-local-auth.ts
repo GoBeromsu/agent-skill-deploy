@@ -87,7 +87,7 @@ export function toDeployBlockedReasons(state: LocalGitHubCredentialState, tokenF
 }
 
 function defaultRunCommand(command: string, args: string[]): CommandResult {
-	// eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- child_process must be loaded via require() in Obsidian's Node context
+	// eslint-disable-next-line @typescript-eslint/no-require-imports -- child_process must be loaded via require() in Obsidian's Node context
 	const { spawnSync } = require('child_process') as {
 		spawnSync: (command: string, args: string[], options: { encoding: 'utf8' }) => {
 			status: number | null;

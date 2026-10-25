@@ -60,7 +60,7 @@ describe('GitHubAuth', () => {
 			}),
 		};
 
-		const auth = new GitHubAuth(tokenStore as never, {} as never, { info: vi.fn() } as never, localAuth as never);
+		const auth = new GitHubAuth(tokenStore, {} as never, { info: vi.fn() } as never, localAuth as never);
 		const connection = await auth.getConnectionState();
 
 		expect(connection.authSource).toBe('stored-token');
@@ -86,7 +86,7 @@ describe('GitHubAuth', () => {
 			}),
 		};
 
-		const auth = new GitHubAuth(tokenStore as never, {} as never, { info: vi.fn() } as never, localAuth as never);
+		const auth = new GitHubAuth(tokenStore, {} as never, { info: vi.fn() } as never, localAuth as never);
 		const connection = await auth.getConnectionState();
 
 		expect(connection.authSource).toBe('local-gh');
@@ -112,7 +112,7 @@ describe('GitHubAuth', () => {
 			}),
 		};
 
-		const auth = new GitHubAuth(tokenStore as never, {} as never, { info: vi.fn() } as never, localAuth as never);
+		const auth = new GitHubAuth(tokenStore, {} as never, { info: vi.fn() } as never, localAuth as never);
 		const connection = await auth.getConnectionState();
 
 		expect(connection.authSource).toBe('none');
